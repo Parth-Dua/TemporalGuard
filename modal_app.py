@@ -1,35 +1,26 @@
 """Modal app for TemporalGuard heavy compute (full-corpus FAISS indexing on GPU).
 
-Why Modal: embedding the full EnterpriseRAG-Bench (~512k docs, ~630M tokens) is
-far too slow on a laptop CPU. We run the embed+index pass on an L4 GPU, reading
-the bench corpus from a Modal Volume and writing the FAISS index back to it.
+The corpus is loaded **directly from HuggingFace** (onyx-dot-app/EnterpriseRAG-Bench)
+on Modal — no local files, no uploads, no tarballs. The HF cache lives on the
+Modal Volume so re-runs don't re-download. Embedding the full ~512k-doc corpus
+runs on an L4 GPU; the FAISS index is written back to the Volume.
 
 One-time setup (run locally, from the repo root):
 
     # 1. Auth (already done if ~/.modal.toml exists)
     modal token new
 
-    # 2. Create the secret with the API keys the run needs
+    # 2. Secret with the keys the run needs (DeepSeek for baseline; HF token for the dataset)
     modal secret create temporalguard-secrets \
         DEEPSEEK_API_KEY=<key> HF_TOKEN=<token>
 
-    # 3. Upload the bench corpus into the Volume (once; a few hundred MB)
-    modal volume create temporalguard-data
-    modal volume put temporalguard-data \
-        EnterpriseRAG-Bench/generated_data /bench/generated_data
-
-Then build the full index on GPU:
+Build the full index on GPU (downloads the dataset from HF on first run):
 
     modal run modal_app.py::index_corpus
 
-And (optionally) run the baseline on Modal CPU against the full index:
-
-    modal run modal_app.py::run_baseline --questions-jsonl <local path or volume path>
-
-The Volume layout this app uses:
-    /data/bench/generated_data/...     <- uploaded bench corpus
+Volume layout:
+    /data/hf_cache/...                       <- HuggingFace dataset cache (download once)
     /data/index/full/{index.faiss, chunks.jsonl, meta.json}
-    /data/outputs/baseline_outputs.jsonl
 """
 from __future__ import annotations
 
@@ -37,7 +28,6 @@ import modal
 
 app = modal.App("temporalguard")
 
-# Source is added to the image so `import temporalguard...` works on Modal.
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -47,6 +37,8 @@ image = (
         "numpy",
         "pyyaml",
         "openai",
+        "datasets",
+        "huggingface-hub",
         "langchain-text-splitters",
     )
     .add_local_dir("src", remote_path="/root/src")
@@ -56,28 +48,31 @@ volume = modal.Volume.from_name("temporalguard-data", create_if_missing=True)
 secrets = [modal.Secret.from_name("temporalguard-secrets")]
 
 VOLUME_MOUNT = "/data"
-BENCH_ROOT = "/data/bench"          # generated_data/ lives directly under here
+HF_CACHE = "/data/hf_cache"          # HuggingFace dataset cache (persisted on the Volume)
 INDEX_DIR = "/data/index/full"
 EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+SRC_PATH = "/root/src"
 
 
-@app.function(image=image, gpu="L4", volumes={VOLUME_MOUNT: volume}, secrets=secrets, timeout=4 * 60 * 60)
+@app.function(image=image, gpu="L4", volumes={VOLUME_MOUNT: volume}, secrets=secrets, timeout=6 * 60 * 60)
 def index_corpus(chunk_size: int = 900, chunk_overlap: int = 120):
-    """Stream every bench doc -> chunk -> embed (GPU) -> FAISS -> save to Volume."""
+    """Stream docs from HF -> chunk -> embed (GPU) -> FAISS -> save to Volume."""
+    import os
     import sys
     import time
 
-    sys.path.insert(0, "/root/src")
-    from temporalguard.corpus.bench_import import iter_all_bench_docs
+    sys.path.insert(0, SRC_PATH)
+    from temporalguard.corpus.hf_loader import iter_hf_docs
     from temporalguard.retrieval.build import build_index_from_docs
 
+    token = os.environ.get("HF_TOKEN")
     t0 = time.time()
 
     def log(msg: str):
         print(f"[{time.time() - t0:7.1f}s] {msg}", flush=True)
 
-    log("starting full-corpus index build (GPU=L4)")
-    docs = iter_all_bench_docs(BENCH_ROOT)
+    log("starting full-corpus index build (GPU=L4), loading dataset from HuggingFace")
+    docs = iter_hf_docs(cache_dir=HF_CACHE, token=token)
     index = build_index_from_docs(
         docs,
         index_dir=INDEX_DIR,
@@ -95,14 +90,10 @@ def index_corpus(chunk_size: int = 900, chunk_overlap: int = 120):
 
 @app.function(image=image, volumes={VOLUME_MOUNT: volume}, secrets=secrets, timeout=60 * 60)
 def run_baseline(questions: list, top_k: int = 5, mock: bool = False):
-    """Run naive baseline over `questions` (list of dicts) against the full index.
-
-    Returns the rows; the caller persists them locally. Reads the index from the
-    Volume. `mock=True` makes it $0.
-    """
+    """Run naive baseline over `questions` (list of dicts) against the full index on the Volume."""
     import sys
 
-    sys.path.insert(0, "/root/src")
+    sys.path.insert(0, SRC_PATH)
     from temporalguard.eval.baseline import answer_baseline
     from temporalguard.llm.cache import LLMCache
     from temporalguard.llm.provider import LLMProvider
@@ -117,7 +108,7 @@ def run_baseline(questions: list, top_k: int = 5, mock: bool = False):
     retriever = Retriever(INDEX_DIR, EMBED_MODEL, top_k=top_k, device="cpu")
     provider = LLMProvider(
         {"provider": "deepseek", "base_url": "https://api.deepseek.com",
-         "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-chat", "mock": mock},
+         "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-v4-flash", "mock": mock},
         cache=LLMCache("/data/cache/llm_calls"),
     )
 

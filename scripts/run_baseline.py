@@ -1,10 +1,9 @@
 """Run naive baseline RAG over the eval questions; cache outputs.
 
 Usage:
-  python scripts/run_baseline.py --mock                 # $0 extractive smoke test (dev index + dev questions)
-  python scripts/run_baseline.py                         # real DeepSeek, dev index + dev questions
-  python scripts/run_baseline.py --questions full        # use full mapped question set (needs full index)
-  python scripts/run_baseline.py --emit-bench            # also write bench answer_evaluation format
+  python scripts/run_baseline.py --mock          # $0 extractive smoke test over the 70-question subset
+  python scripts/run_baseline.py                  # real DeepSeek baseline over the subset
+  python scripts/run_baseline.py --emit-bench     # also write bench answer_evaluation format
 """
 import argparse
 
@@ -22,8 +21,6 @@ from temporalguard.utils.json_utils import read_jsonl, write_jsonl
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--mock", action="store_true", help="Force mock (no API) mode")
-    ap.add_argument("--questions", choices=["dev", "full"], default="dev",
-                    help="dev = data/synthetic/dev_questions.jsonl; full = eval_questions.jsonl")
     ap.add_argument("--index-dir", default=None, help="Override index dir (else configs/retrieval.yaml)")
     ap.add_argument("--emit-bench", action="store_true", help="Also write bench answer format")
     args = ap.parse_args()
@@ -41,8 +38,7 @@ def main():
     retriever = Retriever(index_dir=index_dir, embedding_model=retr["embedding_model"], top_k=retr.get("top_k", 5))
     provider = LLMProvider(llm_cfg, cache=LLMCache(app["cache"]["llm_dir"]))
 
-    q_path = app["paths"]["dev_questions"] if args.questions == "dev" else app["paths"]["eval_questions"]
-    questions = read_jsonl(q_path)
+    questions = read_jsonl(app["paths"]["eval_questions"])
 
     rows, total_cost = [], 0.0
     for i, q in enumerate(questions, 1):

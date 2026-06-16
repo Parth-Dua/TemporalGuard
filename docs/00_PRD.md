@@ -130,7 +130,7 @@ deterministic demos / unit tests of later phases. It is not part of the default 
 
 Use APIs only for: evidence judging, conflict detection, final answer generation.
 
-- **DeepSeek `deepseek-chat`** (OpenAI-compatible endpoint) is the default; cheap and cached.
+- **DeepSeek `deepseek-v4-flash`** (OpenAI-compatible endpoint) is the default; `deepseek-v4-pro` for harder calls. Cheap and cached.
 - Cache every API response to disk by hash of (model + messages + params).
 - Mock mode (`--mock`) for $0 dry runs / tests.
 - Estimated cost: even the full ~340-question pipeline + leaderboard judging is ≈ $1–2,

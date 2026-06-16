@@ -39,16 +39,22 @@ def build_index_from_docs(
             pending.clear()
 
     n_docs = 0
+    last_doc_id = None
     for ch in chunk_documents(docs, chunk_size=chunk_size, chunk_overlap=chunk_overlap):
+        if ch.doc_id != last_doc_id:           # new document boundary
+            n_docs += 1
+            last_doc_id = ch.doc_id
+            if n_docs % 10000 == 0:
+                log(f"  ingested {n_docs} docs / {len(chunks)} chunks "
+                    f"({len(vec_batches)} batches embedded)")
         chunks.append(ch)
         pending.append(ch.text)
-        if len(chunks) % 1000 == 0 and len(chunks) and chunks[-1].chunk_index == 0:
-            n_docs += 1  # rough doc counter (first chunk of a doc)
         if len(pending) >= embed_batch:
             flush()
-            log(f"  embedded {len(chunks)} chunks...")
+            log(f"  embedded {len(chunks)} chunks ({n_docs} docs seen)...")
 
     flush()
+    log(f"ingest complete: {n_docs} docs -> {len(chunks)} chunks")
     if not chunks:
         raise ValueError("no chunks produced — empty corpus?")
 

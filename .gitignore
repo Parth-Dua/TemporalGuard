@@ -22,3 +22,8 @@ data/synthetic/
 
 # Cloned benchmark (kept out of project git; used as an optional data source)
 EnterpriseRAG-Bench/
+
+# Large dataset archives (pull from HuggingFace instead)
+all_documents.zip
+*.zip
+*.tar.gz

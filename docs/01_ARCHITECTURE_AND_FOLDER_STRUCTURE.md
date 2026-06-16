@@ -107,6 +107,7 @@ temporalguard-rag/
       documents.jsonl           # local dev slice only
       dev_questions.jsonl       # local dev question subset
     processed/
+      documents.parquet         # consolidated full corpus (uploaded to Modal Volume)
       chunks.jsonl
 
   cache/
@@ -126,7 +127,7 @@ temporalguard-rag/
     schemas.py                  # Document, Chunk, EvalQuestion (+ to/from_dict)
     corpus/
       bench_import.py           # normalize_bench_doc, iter_all_bench_docs, map_questions
-      engineering.py policies.py distractors.py questions.py   # opt-in demo seed
+      parquet_store.py          # consolidate corpus -> one Parquet; stream rows back
     data/
       chunking.py               # RecursiveCharacterTextSplitter -> Chunk (metadata-carrying)
     retrieval/
@@ -146,7 +147,7 @@ temporalguard-rag/
 
   app/                          # (later) Streamlit dashboard
   scripts/
-    build_corpus.py index_corpus.py run_baseline.py   # (later) run_eval.py, export_report.py
+    consolidate_corpus.py build_corpus.py index_corpus.py run_baseline.py   # (later) run_eval.py
   tests/                        # (later) abstention / conflict / temporal / metrics
 
   docs/
@@ -293,13 +294,21 @@ To keep total cost under $5:
 Heavy compute (embedding/indexing the full ~512k-doc corpus, ~630M tokens) runs on Modal:
 
 - **Image**: python 3.11 + faiss-cpu, sentence-transformers, torch, numpy, openai,
-  langchain-text-splitters; project source shipped via `add_local_dir("src")`.
-- **Volume** `temporalguard-data`: `/data/bench/generated_data` (uploaded corpus),
-  `/data/index/full` (FAISS index + chunk sidecar), `/data/outputs`.
+  pyarrow, langchain-text-splitters; project source shipped via `add_local_dir("src")`.
+- **Volume** `temporalguard-data`: `/data/corpus/documents.parquet` (consolidated corpus),
+  `/data/index/full` (FAISS index + chunk sidecar).
 - **Secret** `temporalguard-secrets`: `DEEPSEEK_API_KEY`, `HF_TOKEN`.
-- **`index_corpus`** (`gpu="L4"`, 4h timeout): stream-normalize all docs → chunk → embed
+- **`index_corpus`** (`gpu="L4"`, 4h timeout): stream docs from the Parquet → chunk → embed
   (GPU) → FAISS → commit to Volume, with progress logging.
 - Estimated: ~2–4 GPU-hours, comfortably within the user's Modal credits. FAISS itself is $0.
+
+### Why a single Parquet (not raw files)
+The raw bench corpus is **~512k loose files**, which exceeds a classic Modal Volume's
+**500k-inode limit** (and uploading that many tiny files is painfully slow). Our pipeline
+never needs individual file paths at runtime — it normalizes every doc to a flat
+`Document` — so we **consolidate the whole corpus into one Parquet file** locally
+(`scripts/consolidate_corpus.py`) and upload that single artifact. One inode, fast upload,
+and re-indexing (e.g. after a chunking change) just re-reads the one file — no re-upload.
 
 ## 8. Command Flow
 
@@ -309,10 +318,11 @@ python scripts/build_corpus.py --dev-docs 60 --dev-per-category 4
 python scripts/index_corpus.py
 python scripts/run_baseline.py --mock --questions dev --emit-bench
 
-# full corpus (Modal, one-time setup then GPU index)
+# full corpus (Modal): consolidate -> upload one file -> GPU index
+python scripts/consolidate_corpus.py                       # -> data/processed/documents.parquet
 modal secret create temporalguard-secrets DEEPSEEK_API_KEY=... HF_TOKEN=...
 modal volume create temporalguard-data
-modal volume put temporalguard-data EnterpriseRAG-Bench/generated_data /bench/generated_data
+modal volume put temporalguard-data data/processed/documents.parquet /corpus/documents.parquet
 modal run modal_app.py::index_corpus
 
 # later phases

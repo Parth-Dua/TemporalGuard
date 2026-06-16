@@ -4,7 +4,8 @@ llm:
   provider: deepseek
   base_url: https://api.deepseek.com
   api_key_env: DEEPSEEK_API_KEY
-  model: deepseek-chat
+  # deepseek-v4-flash (cheap, high-volume) or deepseek-v4-pro (stronger).
+  model: deepseek-v4-flash
   max_tokens: 400
   temperature: 0.2
   # When true, no API call is made; baseline answers extractively. $0 dry runs / tests.

@@ -1,6 +1,7 @@
 # Core
 numpy
 pyyaml
+pyarrow          # consolidated corpus store (single Parquet)
 
 # Retrieval: local embeddings + FAISS vector store
 sentence-transformers

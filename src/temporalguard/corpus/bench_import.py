@@ -120,15 +120,30 @@ def load_uuid_index(bench_root: str) -> Dict[str, str]:
     return json.loads((Path(bench_root) / "generated_data" / "uuid_index.json").read_text())
 
 
-def iter_all_bench_docs(bench_root: str) -> Iterator[Document]:
-    """Stream every bench document as a ``Document`` (skips unreadable/empty)."""
-    root = Path(bench_root)
-    sources_root = root / "generated_data" / "sources"
-    uuid_index = load_uuid_index(bench_root)
-    for dsid, rel_path in uuid_index.items():
+def iter_bench_docs_slice(
+    bench_root: str, start: int = 0, end: Optional[int] = None
+) -> Iterator[Document]:
+    """Stream the bench docs whose uuid_index position is in ``[start, end)``.
+
+    Used to shard consolidation across parallel processes: each process handles a
+    disjoint index range, so the ~512k small-file reads happen concurrently
+    instead of one slow serial pass.
+    """
+    sources_root = Path(bench_root) / "generated_data" / "sources"
+    items = list(load_uuid_index(bench_root).items())
+    for dsid, rel_path in items[start:end]:
         doc = normalize_bench_doc(dsid, rel_path, sources_root)
         if doc is not None:
             yield doc
+
+
+def iter_all_bench_docs(bench_root: str) -> Iterator[Document]:
+    """Stream every bench document as a ``Document`` (skips unreadable/empty)."""
+    yield from iter_bench_docs_slice(bench_root, 0, None)
+
+
+def bench_doc_count(bench_root: str) -> int:
+    return len(load_uuid_index(bench_root))
 
 
 def map_questions(bench_root: str, include_unresolvable: bool = False) -> List[EvalQuestion]:

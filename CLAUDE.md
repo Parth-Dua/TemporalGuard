@@ -17,16 +17,31 @@ Before coding, read these docs in order:
 Do not duplicate PRD content here. Treat this file as the operating contract for Claude Code.
 
 ## Mission
-Build **TemporalGuard RAG**: an end-to-end resume project that adds a reliability layer to RAG. The system must decide whether retrieved evidence is sufficient, missing, contradictory, or stale before generating an answer.
+Build **TemporalGuard RAG**: an end-to-end resume project that adds a **reliability layer**
+to a cheap baseline RAG. The system decides whether retrieved evidence is sufficient,
+missing, or contradictory before answering — choosing to answer, abstain, or flag a conflict.
 
-Main differentiator: **pre-generation evidence arbitration**, not post-hoc RAG monitoring.
+Main differentiator: **pre-generation evidence arbitration** (conflict detection + abstention),
+not post-hoc RAG monitoring.
+
+### Scope (pivot)
+The project compares **Baseline cheap RAG** vs **Baseline cheap RAG + TemporalGuard reliability
+layer** on a subset of EnterpriseRAG-Bench. We are NOT competing with the benchmark's agentic
+retrieval at scale; we show that a lightweight reliability layer makes a *cheap* RAG safer
+(fewer unsupported answers, correct abstention on not-found, conflict flagging).
+Focus = **conflict + not-found + abstention**. Temporal/staleness is de-scoped for now
+(the HuggingFace `documents` config carries no per-doc dates/status); the
+`STALE_INFO_RESOLVED` label remains reserved but is not a Phase-1–7 deliverable.
 
 ## Hard Constraints
 - One-week MVP.
 - Total API spend cap: **$5**.
-- **Corpus = the full EnterpriseRAG-Bench** (~512k real enterprise docs). We index the
-  whole corpus (no subset selection) so every question's gold docs are present by
-  construction. The hand-authored synthetic corpus is kept only as **opt-in demo seed**.
+- **Corpus = the full EnterpriseRAG-Bench, loaded directly from HuggingFace**
+  (`onyx-dot-app/EnterpriseRAG-Bench`, `documents` config: `doc_id`/`source_type`/`title`/
+  `content`). No local files, no uploads — Modal pulls it from HF and caches on the Volume.
+  We index the whole corpus so every question's gold docs are present by construction.
+- **Eval subset = 70 questions**: 30 clear_answerable (basic/semantic) + 20 unanswerable
+  (info_not_found) + 20 conflicting_info, selected deterministically (first-N per category).
 - Streamlit dashboard for week one; React/Next.js is out of scope.
 - Fine-tuning, NLI models, and rerankers are optional stretch work, not blockers.
 - Cache all API calls.
@@ -43,7 +58,7 @@ Main differentiator: **pre-generation evidence arbitration**, not post-hoc RAG m
 - `sentence-transformers/all-MiniLM-L6-v2` local embeddings
 - `langchain-text-splitters` (`RecursiveCharacterTextSplitter`) for chunking
 - **Modal** for heavy compute: Volume (corpus + index + outputs), Secret (keys), L4 GPU
-- **DeepSeek** (`deepseek-chat`, OpenAI-compatible) for baseline/judging/generation; cached by hash
+- **DeepSeek** (`deepseek-v4-flash` / `deepseek-v4-pro`, OpenAI-compatible) for baseline/judging/generation; cached by hash
 - JSONL data files, YAML configs
 
 ## Differentiator vs. the benchmark
@@ -126,19 +141,15 @@ Two tracks (see Differentiator):
 **Leaderboard track (reuse THEIR functions, do not re-implement):**
 - correctness, completeness, document recall, invalid-extra-documents
 
-**Reliability track (our novelty):**
-- Answerable accuracy
-- Unanswerable abstention recall
-- False abstention rate
-- Unsupported answer rate
-- Conflict detection accuracy
-- Stale-source selection rate
-- Citation precision
-- Retrieval Recall@k
-- MRR
-- Latency
-- Estimated cost
-- Aggregate `TemporalGuard Reliability Score`
+**Reliability track (our novelty) — Baseline vs Baseline+TemporalGuard:**
+- Not-found accuracy (correct NOT_FOUND on info_not_found questions)
+- Conflict detection accuracy (correct CONFLICT_DETECTED on conflicting_info questions)
+- Unsupported answer rate (answered when it shouldn't have)
+- False abstention rate (abstained when it should have answered)
+- Safe decision accuracy (aggregate: right decision label across all categories)
+- Answerable accuracy (correct ANSWER on basic/semantic)
+- Retrieval Recall@k, MRR (and reuse their document-recall)
+- Latency, estimated cost
 
 ## Dashboard Must Show
 Streamlit MVP should include:

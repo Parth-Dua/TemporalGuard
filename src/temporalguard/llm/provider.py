@@ -1,6 +1,6 @@
 """LLM provider (OpenAI-compatible) with caching, cost tracking, and a mock mode.
 
-Defaults to DeepSeek (`deepseek-chat`) via its OpenAI-compatible endpoint; the
+Defaults to DeepSeek (`deepseek-v4-flash`) via its OpenAI-compatible endpoint; the
 model / base_url / key env come from configs/app.yaml so swapping providers is a
 config change. ``mock=True`` returns an extractive stitch of the context with no
 API call — for $0 dry runs and tests.
@@ -15,8 +15,8 @@ from temporalguard.llm.cache import LLMCache, cache_key
 
 # Approx USD per 1M tokens (prompt, completion). DeepSeek pricing is approximate.
 PRICES = {
-    "deepseek-chat": (0.27, 1.10),
-    "deepseek-reasoner": (0.55, 2.19),
+    "deepseek-v4-flash": (0.27, 1.10),
+    "deepseek-v4-pro": (0.55, 2.19),
     "gpt-4o-mini": (0.15, 0.60),
     "mock": (0.0, 0.0),
 }
@@ -43,7 +43,7 @@ class LLMProvider:
         self.provider = cfg.get("provider", "deepseek")
         self.base_url = cfg.get("base_url", "https://api.deepseek.com")
         self.api_key_env = cfg.get("api_key_env", "DEEPSEEK_API_KEY")
-        self.model = cfg.get("model", "deepseek-chat")
+        self.model = cfg.get("model", "deepseek-v4-flash")
         self.max_tokens = int(cfg.get("max_tokens", 400))
         self.temperature = float(cfg.get("temperature", 0.2))
         self.mock = bool(cfg.get("mock", False))

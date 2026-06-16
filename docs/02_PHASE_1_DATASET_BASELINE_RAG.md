@@ -18,7 +18,9 @@ normalized into our `Document` schema, preserving `created_at` / `updated_at` / 
 `source_type` and a default `authority_score` (by source). `doc_id == bench dsid` so
 retrieved ids map straight back for the leaderboard.
 
-The hand-authored synthetic corpus is retained only as **opt-in demo seed** (`--include-seed`).
+For the full-corpus run, all docs are consolidated into a **single Parquet** locally
+(`scripts/consolidate_corpus.py`) and uploaded as one file — a classic Modal Volume caps
+at ~500k inodes, which the 512k raw files exceed.
 
 ## Eval questions: map the bench's labeled types
 
@@ -72,10 +74,11 @@ python scripts/build_corpus.py --dev-docs 60 --dev-per-category 4
 python scripts/index_corpus.py
 python scripts/run_baseline.py --mock --questions dev --emit-bench
 
-# Full corpus (Modal)
+# Full corpus (Modal): consolidate -> upload one file -> GPU index
+python scripts/consolidate_corpus.py        # 512k files -> data/processed/documents.parquet
 modal secret create temporalguard-secrets DEEPSEEK_API_KEY=... HF_TOKEN=...
 modal volume create temporalguard-data
-modal volume put temporalguard-data EnterpriseRAG-Bench/generated_data /bench/generated_data
+modal volume put temporalguard-data data/processed/documents.parquet /corpus/documents.parquet
 modal run modal_app.py::index_corpus
 # then run the baseline over all ~340 questions against the full index
 ```
