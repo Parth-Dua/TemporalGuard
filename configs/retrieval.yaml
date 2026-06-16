@@ -1,0 +1,15 @@
+# Retrieval configuration
+embedding_model: sentence-transformers/all-MiniLM-L6-v2
+top_k: 5
+
+chunking:
+  chunk_size: 900
+  chunk_overlap: 120
+
+# Bench corpus location (read at index time).
+bench_root: EnterpriseRAG-Bench
+
+paths:
+  # Local dev index. The full-corpus index lives on a Modal Volume.
+  index_dir: cache/index/dev
+  chunks: data/processed/chunks.jsonl

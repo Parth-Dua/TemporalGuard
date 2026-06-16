@@ -1,0 +1,12 @@
+# Default authority weight per source type (0-1). Used by later phases
+# (temporal/source-authority resolver). Defined here so logic never hardcodes
+# these values. Per-document authority_score in the corpus overrides when set.
+source_authority:
+  official_docs: 0.95
+  runbook: 0.90
+  product_doc: 0.85
+  wiki: 0.70
+  email: 0.65
+  jira: 0.55
+  github: 0.55
+  slack: 0.40

@@ -1,0 +1,14 @@
+# Core
+numpy
+pyyaml
+
+# Retrieval: local embeddings + FAISS vector store
+sentence-transformers
+faiss-cpu
+langchain-text-splitters
+
+# LLM provider (OpenAI-compatible; DeepSeek for baseline generation)
+openai
+
+# Heavy compute (full-corpus indexing on GPU)
+modal

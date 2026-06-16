@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Env / secrets
+.env
+
+# Caches and generated artifacts
+cache/
+data/processed/
+data/synthetic/
+*.faiss
+.cache/
+
+# Modal local state (none committed)
+*.modal.toml
+
+# OS
+.DS_Store
+
+# Cloned benchmark (kept out of project git; used as an optional data source)
+EnterpriseRAG-Bench/

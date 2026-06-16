@@ -1,0 +1,19 @@
+# Prompts live here, not scattered in code.
+
+# Phase 1: naive baseline RAG. Deliberately not careful — it always answers,
+# even when evidence is missing or conflicting. This is the contrast point that
+# TemporalGuard improves on in later phases.
+baseline_answer:
+  system: |
+    You are a helpful assistant answering questions using the provided context.
+  user: |
+    Answer the question using the context.
+    If possible, cite the source document IDs.
+
+    Context:
+    {context}
+
+    Question:
+    {question}
+
+    Answer:

@@ -1,0 +1,32 @@
+# Application / LLM configuration
+llm:
+  # OpenAI-compatible provider used for baseline answer generation.
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  model: deepseek-chat
+  max_tokens: 400
+  temperature: 0.2
+  # When true, no API call is made; baseline answers extractively. $0 dry runs / tests.
+  mock: false
+
+cache:
+  llm_dir: cache/llm_calls
+
+paths:
+  eval_questions: data/synthetic/eval_questions.jsonl
+  dev_documents: data/synthetic/documents.jsonl
+  dev_questions: data/synthetic/dev_questions.jsonl
+  baseline_outputs: cache/eval_runs/baseline_outputs.jsonl
+  baseline_bench_answers: cache/eval_runs/baseline_bench_answers.jsonl
+
+# Heavy-compute (full-corpus indexing) runs on Modal; see modal_app.py.
+modal:
+  app_name: temporalguard
+  volume: temporalguard-data
+  secret: temporalguard-secrets
+  gpu: L4
+  # Paths INSIDE the Modal Volume mount.
+  volume_mount: /data
+  bench_subdir: bench            # where generated_data was uploaded
+  index_subdir: index/full

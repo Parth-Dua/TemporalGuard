@@ -1,0 +1,178 @@
+"""Engineering / SRE reliability-core documents.
+
+These carry the deliberate stale and conflict patterns that TemporalGuard is
+evaluated on (deployment timeout, API rate limits, security review, feature
+flag rollout), plus clear-answer runbooks.
+"""
+from __future__ import annotations
+
+from typing import Dict, List
+
+DOCUMENTS: List[Dict] = [
+    # ---- deployment timeout (STALE: old wiki vs new runbook) ----
+    {
+        "doc_id": "wiki_deploy_timeout_2024_01",
+        "title": "Deployment Settings (Wiki)",
+        "source_type": "wiki",
+        "created_at": "2024-01-10",
+        "authority_score": 0.55,
+        "status": "deprecated",
+        "text": "Deployment timeout is 30 seconds. If a deploy exceeds this it is rolled back automatically.",
+        "metadata": {"topic": "deployment", "department": "engineering"},
+    },
+    {
+        "doc_id": "runbook_deploy_timeout_2026_04",
+        "title": "Deployment Runbook",
+        "source_type": "runbook",
+        "created_at": "2026-04-01",
+        "authority_score": 0.95,
+        "status": "active",
+        "text": "Current deployment timeout is 60 seconds. This was raised from the older 30 second limit after the Q1 2026 rollout review. Deploys exceeding 60s are rolled back.",
+        "metadata": {"topic": "deployment", "department": "engineering"},
+    },
+    # ---- API rate limits (STALE: old wiki vs new product doc) ----
+    {
+        "doc_id": "product_doc_rate_limits_2026_05",
+        "title": "API Rate Limits",
+        "source_type": "product_doc",
+        "created_at": "2026-05-10",
+        "authority_score": 0.90,
+        "status": "active",
+        "text": "The standard API tier allows 1000 requests per minute. The enterprise tier allows 10000 requests per minute. Bursts above the limit return HTTP 429.",
+        "metadata": {"topic": "api_rate_limits", "department": "product"},
+    },
+    {
+        "doc_id": "wiki_rate_limits_2023_06",
+        "title": "API Limits (old wiki)",
+        "source_type": "wiki",
+        "created_at": "2023-06-01",
+        "authority_score": 0.50,
+        "status": "deprecated",
+        "text": "API rate limit is 500 requests per minute for all customers.",
+        "metadata": {"topic": "api_rate_limits", "department": "product"},
+    },
+    # ---- incident escalation (CLEAR) ----
+    {
+        "doc_id": "runbook_incident_2026_03",
+        "title": "Incident Escalation Runbook",
+        "source_type": "runbook",
+        "created_at": "2026-03-15",
+        "authority_score": 0.95,
+        "status": "active",
+        "text": "For P0 incidents, page the on-call engineer immediately and open a Zoom bridge within 5 minutes. For P1 incidents, notify the on-call engineer within 15 minutes. Post a status page update within 30 minutes for any customer-facing incident.",
+        "metadata": {"topic": "incident_escalation", "department": "sre"},
+    },
+    {
+        "doc_id": "jira_incident_ticket_2026_03",
+        "title": "JIRA INC-4521: P0 paging not firing",
+        "source_type": "jira",
+        "created_at": "2026-03-18",
+        "authority_score": 0.55,
+        "status": "active",
+        "text": "INC-4521: PagerDuty did not page on-call during the March outage. Root cause was a stale escalation policy. Fixed by updating the rotation.",
+        "metadata": {"topic": "incident_escalation", "department": "sre"},
+    },
+    # ---- security review (STALE: archived wiki vs new official) ----
+    {
+        "doc_id": "official_security_review_2026_04",
+        "title": "Security Review Requirements",
+        "source_type": "official_docs",
+        "created_at": "2026-04-15",
+        "authority_score": 0.95,
+        "status": "active",
+        "text": "All new services handling customer data must complete a security review before launch. As of 2026, the review must include a threat model and a penetration test. Reviews are valid for 12 months.",
+        "metadata": {"topic": "security_review", "department": "security"},
+    },
+    {
+        "doc_id": "wiki_security_review_2022_09",
+        "title": "Security Review (old process)",
+        "source_type": "wiki",
+        "created_at": "2022-09-01",
+        "authority_score": 0.45,
+        "status": "archived",
+        "text": "New services require a lightweight security checklist review. A penetration test is recommended but not required.",
+        "metadata": {"topic": "security_review", "department": "security"},
+    },
+    # ---- feature flag rollout (CONFLICT: runbook mandate vs PR practice) ----
+    {
+        "doc_id": "runbook_feature_flags_2026_04",
+        "title": "Feature Flag Rollout Runbook",
+        "source_type": "runbook",
+        "created_at": "2026-04-10",
+        "authority_score": 0.90,
+        "status": "active",
+        "text": "New feature flags must be rolled out in stages: 1% of traffic, then 10%, then 50%, then 100%, with at least 24 hours between each stage. Any flag at 100% for 30 days should be removed.",
+        "metadata": {"topic": "feature_flags", "department": "engineering"},
+    },
+    {
+        "doc_id": "github_feature_flags_pr_2026_04",
+        "title": "GitHub PR #882 feature flag guidance",
+        "source_type": "github",
+        "created_at": "2026-04-12",
+        "authority_score": 0.55,
+        "status": "active",
+        "text": "PR #882 comment: for this rollout we went straight to 50% then 100% the next day. Stages can be compressed for low-risk flags.",
+        "metadata": {"topic": "feature_flags", "department": "engineering"},
+    },
+    # ---- clear-answer operational runbooks ----
+    {
+        "doc_id": "runbook_db_backup_2026_02",
+        "title": "Database Backup Runbook",
+        "source_type": "runbook",
+        "created_at": "2026-02-20",
+        "authority_score": 0.90,
+        "status": "active",
+        "text": "Production databases are backed up nightly at 02:00 UTC. Backups are stored in two regions. To restore, use the restore-db script and select a snapshot from the last 30 days.",
+        "metadata": {"topic": "db_backup", "department": "sre"},
+    },
+    {
+        "doc_id": "runbook_oncall_rotation_2026_03",
+        "title": "On-Call Rotation Runbook",
+        "source_type": "runbook",
+        "created_at": "2026-03-10",
+        "authority_score": 0.90,
+        "status": "active",
+        "text": "The on-call rotation is weekly, handed off every Monday at 10:00 local time. The primary on-call must acknowledge pages within 5 minutes; otherwise the secondary is paged.",
+        "metadata": {"topic": "oncall", "department": "sre"},
+    },
+    {
+        "doc_id": "runbook_cert_rotation_2026_03",
+        "title": "TLS Certificate Rotation Runbook",
+        "source_type": "runbook",
+        "created_at": "2026-03-28",
+        "authority_score": 0.90,
+        "status": "active",
+        "text": "TLS certificates are rotated automatically 30 days before expiry via the cert-manager job. If automation fails, follow the manual renewal steps and page the SRE on-call.",
+        "metadata": {"topic": "tls_certs", "department": "sre"},
+    },
+    {
+        "doc_id": "wiki_code_review_2026_02",
+        "title": "Code Review Guidelines",
+        "source_type": "wiki",
+        "created_at": "2026-02-18",
+        "authority_score": 0.70,
+        "status": "active",
+        "text": "All pull requests require at least one approving review before merge. PRs touching auth or billing require two approvals, one from a senior engineer.",
+        "metadata": {"topic": "code_review", "department": "engineering"},
+    },
+    {
+        "doc_id": "github_ci_pipeline_2026_03",
+        "title": "GitHub: CI pipeline README",
+        "source_type": "github",
+        "created_at": "2026-03-22",
+        "authority_score": 0.55,
+        "status": "active",
+        "text": "The CI pipeline runs lint, unit tests, and integration tests on every push. A green pipeline is required to merge. Nightly builds also run the full e2e suite.",
+        "metadata": {"topic": "ci", "department": "engineering"},
+    },
+    {
+        "doc_id": "jira_billing_ticket_2026_04",
+        "title": "JIRA BILL-77: proration bug",
+        "source_type": "jira",
+        "created_at": "2026-04-08",
+        "authority_score": 0.55,
+        "status": "active",
+        "text": "BILL-77: Mid-cycle plan upgrades are not prorated correctly; customers are double-charged for the overlap period. Fix in progress.",
+        "metadata": {"topic": "billing", "department": "engineering"},
+    },
+]
