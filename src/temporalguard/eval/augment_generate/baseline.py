@@ -9,9 +9,9 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List
 
-from temporalguard.llm.provider import LLMProvider
-from temporalguard.retrieval.faiss_index import SearchHit
-from temporalguard.retrieval.retriever import Retriever
+from temporalguard.eval.augment_generate.provider import LLMProvider
+from temporalguard.vector_db import SearchHit
+from temporalguard.eval.retrieval.retriever import Retriever
 
 
 def _format_context(hits: List[SearchHit]) -> str:

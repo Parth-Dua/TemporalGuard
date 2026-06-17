@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Iterator, List
 
-from temporalguard.corpus.bench_import import QUESTION_TYPE_MAP, SOURCE_MAP
+from temporalguard.ingest.bench_import import QUESTION_TYPE_MAP, SOURCE_MAP
 from temporalguard.schemas import Document, EvalQuestion
 
 HF_DATASET = "onyx-dot-app/EnterpriseRAG-Bench"

@@ -27,3 +27,7 @@ EnterpriseRAG-Bench/
 all_documents.zip
 *.zip
 *.tar.gz
+
+# Results: track metrics+report, ignore bulky raw outputs
+results/**/outputs.jsonl
+results/**/bench_answers.jsonl

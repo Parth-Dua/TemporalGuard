@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from temporalguard.llm.cache import LLMCache, cache_key
+from temporalguard.eval.augment_generate.cache import LLMCache, cache_key
 
 # Approx USD per 1M tokens (prompt, completion). DeepSeek pricing is approximate.
 PRICES = {

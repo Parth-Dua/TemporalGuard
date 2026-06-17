@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from temporalguard.retrieval.embeddings import Embedder
-from temporalguard.retrieval.faiss_index import FaissIndex, SearchHit
+from temporalguard.embeddings import Embedder
+from temporalguard.vector_db import FaissIndex, SearchHit
 
 
 class Retriever:

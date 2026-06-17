@@ -11,9 +11,9 @@ from typing import Callable, Iterable, List, Optional
 
 import numpy as np
 
-from temporalguard.data.chunking import chunk_documents
-from temporalguard.retrieval.embeddings import Embedder
-from temporalguard.retrieval.faiss_index import FaissIndex
+from temporalguard.ingest.chunking import chunk_documents
+from temporalguard.embeddings import Embedder
+from temporalguard.vector_db import FaissIndex
 from temporalguard.schemas import Chunk, Document
 
 

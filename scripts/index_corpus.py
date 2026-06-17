@@ -15,8 +15,8 @@ import os
 import _bootstrap  # noqa: F401
 
 from temporalguard.config import load_dotenv, load_yaml
-from temporalguard.corpus.hf_loader import iter_hf_docs
-from temporalguard.retrieval.build import build_index_from_docs
+from temporalguard.ingest.hf_loader import iter_hf_docs
+from temporalguard.ingest.build import build_index_from_docs
 
 
 def main():

@@ -14,8 +14,8 @@ import argparse
 import _bootstrap  # noqa: F401
 
 from temporalguard.config import load_dotenv, load_yaml
-from temporalguard.corpus.bench_import import category_breakdown
-from temporalguard.corpus.hf_loader import map_hf_questions, select_subset
+from temporalguard.ingest.bench_import import category_breakdown
+from temporalguard.ingest.hf_loader import map_hf_questions, select_subset
 from temporalguard.utils.json_utils import write_jsonl
 
 SUBSET = {"clear_answerable": 30, "unanswerable": 20, "conflicting_info": 20}

@@ -112,7 +112,14 @@ temporalguard-rag/
   cache/
     llm_calls/                  # cached LLM responses (by hash)
     index/dev/                  # local dev FAISS index (full index lives on the Modal Volume)
-    eval_runs/                  # baseline_outputs.jsonl, baseline_bench_answers.jsonl
+
+  results/                      # one folder per RAG pipeline version (sibling of cache/)
+    baseline/
+      metrics.json              # self-describing: reliability + retrieval + leaderboard + engineering
+      metrics_rows.jsonl        # per-question: decision vs expected, gold_retrieved
+      outputs.jsonl             # raw per-question outputs (gitignored)
+      bench_answers.jsonl       # {question_id, answer, document_ids} (gitignored)
+      REPORT.md                 # concise interpretation + next steps
 
   configs/
     app.yaml                    # LLM (DeepSeek), cache/output paths, modal section
@@ -124,23 +131,26 @@ temporalguard-rag/
     __init__.py
     config.py                   # load_yaml / load_configs / load_dotenv / repo_path
     schemas.py                  # Document, Chunk, EvalQuestion (+ to/from_dict)
-    corpus/
-      hf_loader.py              # load EnterpriseRAG-Bench from HuggingFace; 70-question subset
-      bench_import.py           # SOURCE_MAP + QUESTION_TYPE_MAP (category mapping helpers)
-    data/
-      chunking.py               # RecursiveCharacterTextSplitter -> Chunk (metadata-carrying)
-    retrieval/
-      embeddings.py             # sentence-transformers encoder
-      faiss_index.py            # build/save/load/search + chunk sidecar
-      build.py                  # shared docs -> chunks -> embed -> FAISS pipeline (local + Modal)
-      retriever.py              # query -> top_k SearchHit (with metadata)
-    llm/
-      cache.py provider.py      # disk cache + DeepSeek (openai-compatible) + mock
-    eval/
-      baseline.py               # naive answer_baseline()
-      bench_adapter.py          # our rows -> bench answers.jsonl
-      reliability_metrics.py    # (later) our reliability track; imports their metric fns
-    reliability/                # (later) evidence_judge, abstention, conflict_detector, temporal_resolver, ...
+    embeddings.py               # shared: sentence-transformers encoder (ingest + eval)
+    vector_db.py                # shared: FAISS build/save/load/search + chunk sidecar
+    ingest/                     # everything to BUILD the index
+      hf_loader.py              #   load EnterpriseRAG-Bench from HuggingFace; 70-question subset
+      bench_import.py           #   SOURCE_MAP + QUESTION_TYPE_MAP (category mapping)
+      chunking.py               #   RecursiveCharacterTextSplitter -> Chunk (metadata-carrying)
+      build.py                  #   docs -> chunks -> embed -> FAISS (used by local dev + Modal)
+    eval/                       # everything to RUN + SCORE a pipeline
+      retrieval/
+        retriever.py            #   query -> top_k SearchHit (with metadata)
+      augment_generate/
+        provider.py cache.py    #   DeepSeek (openai-compatible) + disk cache + mock
+        baseline.py             #   naive answer_baseline()
+      metrics/
+        bench_adapter.py        #   our rows -> bench answers.jsonl
+        reliability_metrics.py  #   our reliability track (not-found/conflict/abstention)
+        retrieval_metrics.py    #   recall@k, MRR
+        answer_metrics.py       #   runs the bench's leaderboard grader (their code)
+        metrics.py              #   orchestrator -> results/<version>/
+      reliability/              # (later) evidence_judge, abstention, conflict_detector, decision_policy
     utils/
       json_utils.py ids.py
 

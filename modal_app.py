@@ -62,8 +62,8 @@ def index_corpus(chunk_size: int = 900, chunk_overlap: int = 120):
     import time
 
     sys.path.insert(0, SRC_PATH)
-    from temporalguard.corpus.hf_loader import iter_hf_docs
-    from temporalguard.retrieval.build import build_index_from_docs
+    from temporalguard.ingest.hf_loader import iter_hf_docs
+    from temporalguard.ingest.build import build_index_from_docs
 
     token = os.environ.get("HF_TOKEN")
     t0 = time.time()
@@ -88,16 +88,19 @@ def index_corpus(chunk_size: int = 900, chunk_overlap: int = 120):
     return {"chunks": index.count, "elapsed_s": round(time.time() - t0, 1)}
 
 
-@app.function(image=image, volumes={VOLUME_MOUNT: volume}, secrets=secrets, timeout=60 * 60)
+@app.function(image=image, volumes={VOLUME_MOUNT: volume}, secrets=secrets, memory=16384, timeout=60 * 60)
 def run_baseline(questions: list, top_k: int = 5, mock: bool = False):
-    """Run naive baseline over `questions` (list of dicts) against the full index on the Volume."""
+    """Run naive baseline over `questions` (list of dicts) against the full index on the Volume.
+
+    Loads the full FAISS index (~3.77M chunks, ~6GB) into RAM, hence memory=16GB.
+    """
     import sys
 
     sys.path.insert(0, SRC_PATH)
-    from temporalguard.eval.baseline import answer_baseline
-    from temporalguard.llm.cache import LLMCache
-    from temporalguard.llm.provider import LLMProvider
-    from temporalguard.retrieval.retriever import Retriever
+    from temporalguard.eval.augment_generate.baseline import answer_baseline
+    from temporalguard.eval.augment_generate.cache import LLMCache
+    from temporalguard.eval.augment_generate.provider import LLMProvider
+    from temporalguard.eval.retrieval.retriever import Retriever
 
     prompts = {
         "baseline_answer": {
@@ -126,3 +129,27 @@ def main():
     """`modal run modal_app.py` -> build the full index on GPU."""
     result = index_corpus.remote()
     print("index_corpus result:", result)
+
+
+@app.local_entrypoint()
+def baseline(mock: bool = False, top_k: int = 5, version: str = "baseline"):
+    """`modal run modal_app.py::baseline` -> run baseline RAG over the 70-question subset
+    against the full index on Modal, then score it into results/<version>/."""
+    import datetime as _dt
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).parent / "src"))
+    from temporalguard.eval.metrics.metrics import score_version
+    from temporalguard.utils.json_utils import read_jsonl
+
+    questions = read_jsonl("data/synthetic/eval_questions.jsonl")
+    print(f"running baseline over {len(questions)} questions (mock={mock}) ...")
+    rows = run_baseline.remote(questions, top_k=top_k, mock=mock)
+
+    ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    m = score_version(version, rows, questions, timestamp=ts)
+    print(f"scored -> results/{version}/  "
+          f"(safe_decision_accuracy={m['reliability']['safe_decision_accuracy']:.1%}, "
+          f"recall@k={m['retrieval']['recall_at_k']:.1%}, "
+          f"cost=${m['engineering']['total_cost_usd']})")
