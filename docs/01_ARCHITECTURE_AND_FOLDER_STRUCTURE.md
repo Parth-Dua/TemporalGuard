@@ -107,8 +107,7 @@ temporalguard-rag/
       documents.jsonl           # local dev slice only
       dev_questions.jsonl       # local dev question subset
     processed/
-      documents.parquet         # consolidated full corpus (uploaded to Modal Volume)
-      chunks.jsonl
+      chunks.jsonl              # (local dev only) chunk sidecar from a small HF slice
 
   cache/
     llm_calls/                  # cached LLM responses (by hash)
@@ -126,8 +125,8 @@ temporalguard-rag/
     config.py                   # load_yaml / load_configs / load_dotenv / repo_path
     schemas.py                  # Document, Chunk, EvalQuestion (+ to/from_dict)
     corpus/
-      bench_import.py           # normalize_bench_doc, iter_all_bench_docs, map_questions
-      parquet_store.py          # consolidate corpus -> one Parquet; stream rows back
+      hf_loader.py              # load EnterpriseRAG-Bench from HuggingFace; 70-question subset
+      bench_import.py           # SOURCE_MAP + QUESTION_TYPE_MAP (category mapping helpers)
     data/
       chunking.py               # RecursiveCharacterTextSplitter -> Chunk (metadata-carrying)
     retrieval/
@@ -147,7 +146,7 @@ temporalguard-rag/
 
   app/                          # (later) Streamlit dashboard
   scripts/
-    consolidate_corpus.py build_corpus.py index_corpus.py run_baseline.py   # (later) run_eval.py
+    build_corpus.py index_corpus.py run_baseline.py   # (later) run_eval.py
   tests/                        # (later) abstention / conflict / temporal / metrics
 
   docs/
@@ -294,35 +293,31 @@ To keep total cost under $5:
 Heavy compute (embedding/indexing the full ~512k-doc corpus, ~630M tokens) runs on Modal:
 
 - **Image**: python 3.11 + faiss-cpu, sentence-transformers, torch, numpy, openai,
-  pyarrow, langchain-text-splitters; project source shipped via `add_local_dir("src")`.
-- **Volume** `temporalguard-data`: `/data/corpus/documents.parquet` (consolidated corpus),
+  datasets, huggingface-hub, langchain-text-splitters; source shipped via `add_local_dir("src")`.
+- **Volume** `temporalguard-data`: `/data/hf_cache` (HuggingFace dataset cache, downloaded once),
   `/data/index/full` (FAISS index + chunk sidecar).
 - **Secret** `temporalguard-secrets`: `DEEPSEEK_API_KEY`, `HF_TOKEN`.
-- **`index_corpus`** (`gpu="L4"`, 4h timeout): stream docs from the Parquet → chunk → embed
-  (GPU) → FAISS → commit to Volume, with progress logging.
-- Estimated: ~2–4 GPU-hours, comfortably within the user's Modal credits. FAISS itself is $0.
+- **`index_corpus`** (`gpu="L4"`): stream docs from HuggingFace → chunk → embed (GPU) → FAISS
+  → commit to Volume, with doc/chunk progress logging.
+- Estimated: ~2 GPU-hours, within Modal credits. FAISS itself is $0.
 
-### Why a single Parquet (not raw files)
-The raw bench corpus is **~512k loose files**, which exceeds a classic Modal Volume's
-**500k-inode limit** (and uploading that many tiny files is painfully slow). Our pipeline
-never needs individual file paths at runtime — it normalizes every doc to a flat
-`Document` — so we **consolidate the whole corpus into one Parquet file** locally
-(`scripts/consolidate_corpus.py`) and upload that single artifact. One inode, fast upload,
-and re-indexing (e.g. after a chunking change) just re-reads the one file — no re-upload.
+### Why load from HuggingFace (not local files)
+The raw bench corpus is **~512k loose files** — too many to upload to a classic Modal Volume
+(500k-inode limit) and slow to read on a laptop. The dataset is published on HuggingFace
+(`onyx-dot-app/EnterpriseRAG-Bench`, `documents` config), so Modal pulls it directly with
+`datasets`, caches it on the Volume, and never touches local disk. Re-indexing (e.g. after a
+chunking change) re-reads the cached dataset — no re-download.
 
 ## 8. Command Flow
 
 ```bash
-# local dev (small slice, $0)
-python scripts/build_corpus.py --dev-docs 60 --dev-per-category 4
-python scripts/index_corpus.py
-python scripts/run_baseline.py --mock --questions dev --emit-bench
+# local dev (small HF slice, $0-ish)
+python scripts/build_corpus.py            # 70-question eval subset from HF
+python scripts/index_corpus.py --limit 2000   # index first 2k HF docs locally
+python scripts/run_baseline.py --mock --emit-bench
 
-# full corpus (Modal): consolidate -> upload one file -> GPU index
-python scripts/consolidate_corpus.py                       # -> data/processed/documents.parquet
+# full corpus (Modal L4): downloads from HF, embeds on GPU -> FAISS on Volume
 modal secret create temporalguard-secrets DEEPSEEK_API_KEY=... HF_TOKEN=...
-modal volume create temporalguard-data
-modal volume put temporalguard-data data/processed/documents.parquet /corpus/documents.parquet
 modal run modal_app.py::index_corpus
 
 # later phases

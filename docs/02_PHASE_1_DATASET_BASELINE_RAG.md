@@ -18,30 +18,32 @@ normalized into our `Document` schema, preserving `created_at` / `updated_at` / 
 `source_type` and a default `authority_score` (by source). `doc_id == bench dsid` so
 retrieved ids map straight back for the leaderboard.
 
-For the full-corpus run, all docs are consolidated into a **single Parquet** locally
-(`scripts/consolidate_corpus.py`) and uploaded as one file — a classic Modal Volume caps
-at ~500k inodes, which the 512k raw files exceed.
+The corpus is loaded **directly from HuggingFace** (`onyx-dot-app/EnterpriseRAG-Bench`,
+`documents` config) on Modal — no local files, no uploads. The `documents` config exposes
+`doc_id`/`source_type`/`title`/`content` (no per-doc dates/status), which is why temporal/
+staleness is de-scoped; authority defaults by source type.
 
 ## Eval questions: map the bench's labeled types
 
 | bench question_type | our category      | expected_decision | gold docs            |
 | ------------------- | ----------------- | ----------------- | -------------------- |
-| basic, semantic     | clear_answerable  | ANSWER            | 1 (imported)         |
-| conflicting_info    | conflicting_info  | CONFLICT_DETECTED | 2 (recency-resolvable; staleness handled in Phase 6) |
+| basic, semantic     | clear_answerable  | ANSWER            | 1                    |
+| conflicting_info    | conflicting_info  | CONFLICT_DETECTED | 2                    |
 | info_not_found      | unanswerable      | NOT_FOUND         | none (stays unanswerable) |
 
-~340 of the 500 bench questions map cleanly (≈300 clear_answerable, 20 conflicting_info,
-20 unanswerable). `answer_facts` are preserved for the Phase-2 leaderboard track.
+The **eval subset = 70 questions**: 30 clear_answerable + 20 unanswerable + 20 conflicting_info,
+selected deterministically (first-N per category). `answer_facts` are preserved for the
+Phase-2 leaderboard track.
 
 ## Retrieval setup
 
 - embeddings: local `sentence-transformers/all-MiniLM-L6-v2` (L2-normalized)
 - vector store: **FAISS** `IndexFlatIP` (cosine via inner product) + JSONL chunk sidecar
 - chunking: `RecursiveCharacterTextSplitter` (chunk_size 900, overlap 120); each chunk carries
-  scalar authority metadata so Phase 6 can compute recency/authority
+  scalar metadata (source_type, authority_score) for the reliability layer
 - top_k: 5
-- **full-corpus embedding/indexing runs on Modal (L4 GPU)**, writing the index to a Modal Volume;
-  local dev uses a small slice (FAISS still, just fewer docs)
+- **full-corpus embedding/indexing runs on Modal (L4 GPU)** from HuggingFace, writing the index
+  to a Modal Volume; local dev indexes a small HF slice
 
 ## Baseline RAG behavior
 
@@ -56,12 +58,11 @@ extractively at $0 for tests/CI.
 
 ## Deliverables
 
-- `data/synthetic/eval_questions.jsonl` (~340 mapped questions; our schema)
-- `data/synthetic/documents.jsonl` + `dev_questions.jsonl` (local dev slice only)
-- `src/temporalguard/`: `schemas.py`, `corpus/bench_import.py`, `data/chunking.py`,
-  `retrieval/{embeddings,faiss_index,build,retriever}.py`, `llm/{cache,provider}.py`,
-  `eval/{baseline,bench_adapter}.py`, `utils/{json_utils,ids}.py`, `config.py`
-- `modal_app.py` (full-corpus L4 index build)
+- `data/synthetic/eval_questions.jsonl` (70-question eval subset; our schema)
+- `src/temporalguard/`: `schemas.py`, `corpus/hf_loader.py`, `corpus/bench_import.py`,
+  `data/chunking.py`, `retrieval/{embeddings,faiss_index,build,retriever}.py`,
+  `llm/{cache,provider}.py`, `eval/{baseline,bench_adapter}.py`, `utils/{json_utils,ids}.py`, `config.py`
+- `modal_app.py` (full-corpus L4 index build from HuggingFace)
 - `scripts/{build_corpus,index_corpus,run_baseline}.py`
 - baseline outputs cached: `cache/eval_runs/baseline_outputs.jsonl` and bench-format
   `cache/eval_runs/baseline_bench_answers.jsonl`
@@ -69,34 +70,34 @@ extractively at $0 for tests/CI.
 ## Command flow
 
 ```bash
-# Local dev ($0)
-python scripts/build_corpus.py --dev-docs 60 --dev-per-category 4
-python scripts/index_corpus.py
-python scripts/run_baseline.py --mock --questions dev --emit-bench
+# Build the 70-question eval subset (small HF questions config only)
+python scripts/build_corpus.py
 
-# Full corpus (Modal): consolidate -> upload one file -> GPU index
-python scripts/consolidate_corpus.py        # 512k files -> data/processed/documents.parquet
+# Local dev ($0): index a small HF slice, mock baseline
+python scripts/index_corpus.py --limit 2000
+python scripts/run_baseline.py --mock --emit-bench
+
+# Full corpus (Modal L4): downloads docs from HF, embeds on GPU -> FAISS on Volume
 modal secret create temporalguard-secrets DEEPSEEK_API_KEY=... HF_TOKEN=...
-modal volume create temporalguard-data
-modal volume put temporalguard-data data/processed/documents.parquet /corpus/documents.parquet
 modal run modal_app.py::index_corpus
-# then run the baseline over all ~340 questions against the full index
+# then run the baseline over the 70-question subset against the full index
 ```
 
 ## Acceptance criteria
 
-- `build_corpus.py` writes ~340 mapped questions; `info_not_found` have empty gold_doc_ids;
-  `conflicting_info` have exactly 2 gold docs.
-- Bench docs normalize with non-empty text, scalar metadata, and `doc_id == dsid`.
-- `index_corpus` (local dev) builds a FAISS index; a query returns top_k chunks with metadata.
+- `build_corpus.py` writes the 70-question subset (30/20/20); `info_not_found` have empty
+  gold_doc_ids; `conflicting_info` have exactly 2 gold docs.
+- HF docs normalize with non-empty text, scalar metadata, and `doc_id` == the HF `doc_id`.
+- `index_corpus.py --limit N` (local dev) builds a FAISS index; a query returns top_k chunks with metadata.
 - `modal run modal_app.py::index_corpus` builds the full index on L4 and writes it to the Volume.
 - `run_baseline` answers ALL questions including unanswerable ones (naive contrast), at $0 in
   `--mock` and cached otherwise.
-- `baseline_bench_answers.jsonl` validates as `{question_id (qst_*), answer, document_ids (dsids)}`.
+- `baseline_bench_answers.jsonl` validates as `{question_id (qst_*), answer, document_ids}`.
 
 ## Common pitfalls
 
 - Do not embed the full corpus locally — it is far too slow; that pass belongs on Modal GPU.
 - Do not over-optimize the baseline; it must be a realistic naive baseline.
-- Do not build conflict/abstention/temporal logic yet (later phases).
-- Keep `EnterpriseRAG-Bench/` present at runtime (the Phase-2 leaderboard track runs their code).
+- Do not build conflict/abstention logic yet (later phases).
+- The Phase-2 leaderboard track runs the bench's `answer_evaluation/` scripts; keep a clone of
+  the EnterpriseRAG-Bench repo available for that (the corpus itself comes from HuggingFace).

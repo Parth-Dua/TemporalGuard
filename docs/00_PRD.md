@@ -209,13 +209,14 @@ Trace + metrics saved
 Create a custom metric:
 
 ```text
-TemporalGuard Reliability Score =
-0.25 * answerable_accuracy
-+ 0.25 * unanswerable_abstention_recall
-+ 0.20 * conflict_detection_accuracy
-+ 0.20 * stale_resolution_accuracy
-+ 0.10 * citation_precision
+Safe Decision Accuracy (aggregate reliability score) =
+0.30 * answerable_accuracy            # correct ANSWER on basic/semantic
++ 0.30 * not_found_accuracy           # correct NOT_FOUND on info_not_found
++ 0.30 * conflict_detection_accuracy  # correct CONFLICT_DETECTED on conflicting_info
++ 0.10 * (1 - unsupported_answer_rate)
 ```
+(Staleness/temporal resolution is reserved for future work — the HF `documents`
+config carries no per-doc dates, so it is not part of the current metric set.)
 
 ## 13. Dashboard Requirements
 
