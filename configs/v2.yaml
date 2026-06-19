@@ -1,0 +1,18 @@
+# v2 pipeline config — accuracy-focused (better retrieval + prompt + structured output).
+# Reuses the same FAISS index as the baseline (no re-index). Baseline configs are untouched.
+version: v2
+
+retrieval:
+  retrieve_k: 50          # wide candidate net pulled from FAISS for the reranker
+  top_k: 5                # kept after reranking, fed to the LLM (short context, less truncation)
+  reranker_model: cross-encoder/ms-marco-MiniLM-L6-v2
+
+llm:
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
+  model: deepseek-v4-flash
+  max_tokens: 1500          # must fit the full JSON; 600 truncated -> empty content
+  temperature: 0.1
+  structured: true        # JSON-mode structured decision output (vs baseline's free text)
+  mock: false

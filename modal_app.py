@@ -89,8 +89,8 @@ def index_corpus(chunk_size: int = 900, chunk_overlap: int = 120):
 
 
 @app.function(image=image, volumes={VOLUME_MOUNT: volume}, secrets=secrets, memory=16384, timeout=60 * 60)
-def run_baseline(questions: list, top_k: int = 5, mock: bool = False):
-    """Run naive baseline over `questions` (list of dicts) against the full index on the Volume.
+def run_baseline(questions: list, prompts: dict, top_k: int = 5, mock: bool = False):
+    """Naive baseline over `questions` against the full index; returns the output rows.
 
     Loads the full FAISS index (~3.77M chunks, ~6GB) into RAM, hence memory=16GB.
     """
@@ -102,12 +102,6 @@ def run_baseline(questions: list, top_k: int = 5, mock: bool = False):
     from temporalguard.eval.augment_generate.provider import LLMProvider
     from temporalguard.eval.retrieval.retriever import Retriever
 
-    prompts = {
-        "baseline_answer": {
-            "system": "You are a helpful assistant answering questions using the provided context.",
-            "user": "Answer the question using the context.\nIf possible, cite the source document IDs.\n\nContext:\n{context}\n\nQuestion:\n{question}\n\nAnswer:",
-        }
-    }
     retriever = Retriever(INDEX_DIR, EMBED_MODEL, top_k=top_k, device="cpu")
     provider = LLMProvider(
         {"provider": "deepseek", "base_url": "https://api.deepseek.com",
@@ -124,6 +118,36 @@ def run_baseline(questions: list, top_k: int = 5, mock: bool = False):
     return rows
 
 
+@app.function(image=image, volumes={VOLUME_MOUNT: volume}, secrets=secrets, memory=16384, timeout=2 * 60 * 60)
+def run_v2(questions: list, prompts: dict, retrieve_k: int = 50, top_k: int = 5, mock: bool = False):
+    """v2 pipeline over the full index: wide retrieve -> rerank -> structured decide.
+    Returns the output rows; the local entrypoint scores them into results/<version>/."""
+    import sys
+
+    sys.path.insert(0, SRC_PATH)
+    from temporalguard.eval.augment_generate.rag_v2 import answer_v2
+    from temporalguard.eval.augment_generate.cache import LLMCache
+    from temporalguard.eval.augment_generate.structured import StructuredProvider
+    from temporalguard.eval.retrieval.reranker import Reranker
+    from temporalguard.eval.retrieval.retriever import Retriever
+
+    retriever = Retriever(INDEX_DIR, EMBED_MODEL, top_k=retrieve_k, device="cpu")
+    reranker = Reranker(device="cpu")
+    provider = StructuredProvider(
+        {"provider": "deepseek", "base_url": "https://api.deepseek.com",
+         "api_key_env": "DEEPSEEK_API_KEY", "model": "deepseek-v4-flash", "mock": mock},
+        cache=LLMCache("/data/cache/llm_calls_v2"),
+    )
+
+    rows = []
+    for q in questions:
+        res = answer_v2(q["question"], retriever, reranker, provider, prompts, retrieve_k=retrieve_k, top_k=top_k)
+        res.update(question_id=q["question_id"], category=q.get("category"), expected_decision=q.get("expected_decision"))
+        rows.append(res)
+    volume.commit()
+    return rows
+
+
 @app.local_entrypoint()
 def main():
     """`modal run modal_app.py` -> build the full index on GPU."""
@@ -131,25 +155,51 @@ def main():
     print("index_corpus result:", result)
 
 
-@app.local_entrypoint()
-def baseline(mock: bool = False, top_k: int = 5, version: str = "baseline"):
-    """`modal run modal_app.py::baseline` -> run baseline RAG over the 70-question subset
-    against the full index on Modal, then score it into results/<version>/."""
+def _score_and_print(version: str, rows: list, questions: list):
     import datetime as _dt
     import sys
     from pathlib import Path
-
     sys.path.insert(0, str(Path(__file__).parent / "src"))
     from temporalguard.eval.metrics.metrics import score_version
-    from temporalguard.utils.json_utils import read_jsonl
-
-    questions = read_jsonl("data/synthetic/eval_questions.jsonl")
-    print(f"running baseline over {len(questions)} questions (mock={mock}) ...")
-    rows = run_baseline.remote(questions, top_k=top_k, mock=mock)
 
     ts = _dt.datetime.now().strftime("%Y-%m-%d %H:%M")
     m = score_version(version, rows, questions, timestamp=ts)
-    print(f"scored -> results/{version}/  "
-          f"(safe_decision_accuracy={m['reliability']['safe_decision_accuracy']:.1%}, "
-          f"recall@k={m['retrieval']['recall_at_k']:.1%}, "
-          f"cost=${m['engineering']['total_cost_usd']})")
+    rel = m["reliability"]
+    print(f"\nscored -> results/{version}/")
+    print(f"  answerable={rel['answerable_accuracy']:.1%}  not_found={rel['not_found_accuracy']:.1%}  "
+          f"conflict={rel['conflict_detection_accuracy']:.1%}  safe={rel['safe_decision_accuracy']:.1%}")
+    print(f"  recall@k={m['retrieval']['recall_at_k']:.1%}  cost=${m['engineering']['total_cost_usd']}")
+
+
+@app.local_entrypoint()
+def baseline(mock: bool = False, top_k: int = 5, version: str = "baseline"):
+    """Run baseline over the 70-question subset; score into results/<version>/ locally."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent / "src"))
+    from temporalguard.config import load_yaml
+    from temporalguard.utils.json_utils import read_jsonl
+
+    prompts = load_yaml("configs/prompts.yaml")
+    questions = read_jsonl("data/synthetic/eval_questions.jsonl")
+    print(f"running baseline over {len(questions)} questions (mock={mock}) ...")
+    rows = run_baseline.remote(questions, prompts, top_k=top_k, mock=mock)
+    _score_and_print(version, rows, questions)
+
+
+@app.local_entrypoint()
+def v2(mock: bool = False, version: str = "v2"):
+    """Run the v2 pipeline (retrieve -> rerank -> structured); score into results/<version>/ locally."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent / "src"))
+    from temporalguard.config import load_yaml
+    from temporalguard.utils.json_utils import read_jsonl
+
+    cfg = load_yaml("configs/v2.yaml")
+    prompts = load_yaml("configs/prompts.yaml")
+    retrieve_k, top_k = cfg["retrieval"]["retrieve_k"], cfg["retrieval"]["top_k"]
+    questions = read_jsonl("data/synthetic/eval_questions.jsonl")
+    print(f"running v2 over {len(questions)} questions (retrieve_k={retrieve_k}, top_k={top_k}, mock={mock}) ...")
+    rows = run_v2.remote(questions, prompts, retrieve_k=retrieve_k, top_k=top_k, mock=mock)
+    _score_and_print(version, rows, questions)

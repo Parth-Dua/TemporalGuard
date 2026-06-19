@@ -1,0 +1,44 @@
+{
+  "version": "v2",
+  "timestamp": "2026-06-18 19:24",
+  "n_questions": 70,
+  "category_counts": {
+    "clear_answerable": 30,
+    "unanswerable": 20,
+    "conflicting_info": 20
+  },
+  "reliability": {
+    "n": 70,
+    "answerable_accuracy": 0.4666666666666667,
+    "not_found_accuracy": 1.0,
+    "conflict_detection_accuracy": 0.25,
+    "unsupported_answer_rate": 0.175,
+    "false_abstention_rate": 0.43333333333333335,
+    "safe_decision_accuracy": 0.5571428571428572
+  },
+  "retrieval": {
+    "scored_questions": 50,
+    "recall_at_k": 0.64,
+    "mrr": 0.5363333333333332,
+    "recall_by_category": {
+      "clear_answerable": {
+        "hit": 19,
+        "miss": 11,
+        "recall": 0.6333333333333333
+      },
+      "conflicting_info": {
+        "hit": 13,
+        "miss": 7,
+        "recall": 0.65
+      }
+    }
+  },
+  "leaderboard": {
+    "ran": false,
+    "reason": "skipped (run_leaderboard=False)"
+  },
+  "engineering": {
+    "total_cost_usd": 0.080154,
+    "median_latency_ms": 4098
+  }
+}
